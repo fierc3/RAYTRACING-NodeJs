@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="de">
+    <head>
+        <meta charset="utf-8">
+        <title>RayTracing</title>
+        <link rel="stylesheet" href="HTML_und_JavaScript_Grundstruktur.css">
+        <script src="RayTracingFunctions.js"></script>
+        <script src="RayTracingClasses.js"></script>
+        <!-- <script src="client-js.js"></script> <!-- für remotes Resultate zeigen -->
+        <script>
+            onerror = fehlerbehandlung;
+        </script>
+        <noscript>Please enable JavaScript in your browser</noscript>
+    </head>
+	    <body>
+	        <script>
+			
+			let canvas1 = new Canvas1(); // für lokales Canvas, OOP		
+			let triangles = [];
+			
+			document.write("<input type='file' id='inputfile' onchange='readFile()' accept='.stl'>");
+			
+			let STLloaded = false;
+			async function main()
+			{
+				readFile();
+				while (STLloaded != true) await sleep(1000);
+
+				for (let x = 0; x < canvas1.DefaultWidth; x++)
+					for (let y = 0; y < canvas1.DefaultHeight; y++)
+					{
+						document.title = (100/(canvas1.DefaultWidth)*(x)).toPrecision(3)+"%";
+						// send a ray
+						ray1 = new ray(origin = new vec3([x,y,-10000]), direction = new vec3([0,0,1]));
+						for (let triangle = 0; triangle < triangles.length; triangle++)
+						{
+							ray1.pointOfIntersection(triangles[triangle]);
+							if (ray1.IntSecPnt != undefined) 
+							{
+								let colorPixel = canvas1.DepthCueing (ray1.IntSecPntTriangle.material, ray1.IntSecPnt.z);
+								canvas1.Pixel(x, y, ray1.IntSecPnt.z, colorPixel.r, colorPixel.g, colorPixel.b);
+							}
+							else 
+								canvas1.Pixel(x, y, 0, canvas1.DefaultColor.r, canvas1.DefaultColor.g, canvas1.DefaultColor.b);
+						}
+					}
+			}
+			main();
+        </script>
+    </body>
+</html>
