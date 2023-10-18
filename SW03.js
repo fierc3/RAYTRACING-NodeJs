@@ -1,7 +1,10 @@
 import { remote } from "./lib/client.js";
 import { triangle } from "./lib/triangle.js";
 import { vec3 } from "./lib/RayTracingClasses.js";
-import { ray } from "./lib/ray.js";
+import { ray, createOriginRay } from "./lib/ray.js";
+import { indicateDepth, _indicateDepth } from "./lib/depth.js";
+import { _find_angle, find_angle } from "./lib/angles.js";
+import { simpleCube } from "./lib/shapes.js";
 // import {vec2} from './lib/RayTracingClasses.js' example how helper methods can be loaded
 
 // setups up the web sockets to communicate with the canvas server
@@ -9,115 +12,115 @@ import { ray } from "./lib/ray.js";
 // second parameter is the callback function that should be executed once the connection has been established
 remote("ws://127.0.0.1:9013", paintImage);
 
-const DefaultColor = "rgb(0,0,0)";
-const BackColor = {r: 0, g:0, b: 0};
-
-function interpolate(fg, bg, t)
-{
-    //console.log(`${fg} ${bg} ${t}`)
-    return ((1-t) * fg + t * bg);
-}
-
-function DepthCueing (Color, z)
-{
-    let t = z / 1;
-    if (t < 0) t = 0;
-    if (t > 1) t = 1;
-    let r = interpolate (Color.r, BackColor.r, t);
-    let g = interpolate (Color.g, BackColor.g, t);
-    let b = interpolate (Color.b, BackColor.b, t);
-    return {r: r, g: g, b: b};
-}
+const BackColor = { r: 0, g: 0, b: 0 };
 
 function paintImage(sock) {
+  const startMillisecond = Date.now();
+
+  console.log("Start MS", startMillisecond);
 
   const width = 600;
-  const height = 850;
-  
+  const height = 550;
+
   sock.secureSend("s " + width + " " + height);
   sock.secureSend("f 0 0 0");
 
-  let triangles = [];
+  let triangles = simpleCube();
 
-  let a = new vec3([93, 298, 294]);
-  let b = new vec3([38, 182, 141]);
-  let c = new vec3([152, 34, 212]);
-  triangles.push(new triangle(a, b, c));
-  console.log(triangles[0]);
-  triangles[0].draw(sock);
-
-  let d = new vec3([206, 150, 366]);
-  triangles.push(new triangle(a, c, d));
-  triangles[1].draw(sock);
-
-  let e = new vec3([362, 218, 259]);
-  triangles.push(new triangle(e, d, c));
-  triangles[2].draw(sock);
-
-  let f = new vec3([307, 102, 106]);
-  triangles.push(new triangle(e, d, f));
-  triangles[3].draw(sock);
-
-  triangles.push(new triangle(f, c, b));
-  triangles[4].draw(sock);
-
-  let g = new vec3([194, 250, 34]);
-  triangles.push(new triangle(f, b, g));
-  triangles[5].draw(sock);
-
-  let h = new vec3([248, 366, 188]);
-  triangles.push(new triangle(g, h, e));
-  triangles[6].draw(sock);
-
-  triangles.push(new triangle(g, e, f));
-  triangles[7].draw(sock);
-
-  triangles.push(new triangle(h, a, d));
-  triangles[8].draw(sock);
-
-  triangles.push(new triangle(h, d, e));
-  triangles[9].draw(sock);
-
-  triangles.push(new triangle(g, b, a));
-  triangles[10].draw(sock);
-
-  triangles.push(new triangle(g, a, h));
-  triangles[11].draw(sock);
+  // Display Triangle Corner Points
+  //sock.sendBatch();
 
   for (let x = 0; x < width; x++) {
     for (let y = 0; y < height; y++) {
       // send a ray
-      let ray1 = new ray(
-        new vec3([x, y, -10000]),
-        new vec3([0, 0, 1])
-      );
-      triangles.forEach(triangle => {
+
+      const border = 3;
+      const ray1 = createOriginRay(x, y);
+      const xRay2 = createOriginRay(x + border, y);
+      const xRay3 = createOriginRay(x - border, y);
+      const yRay2 = createOriginRay(x, y + border);
+      const yRay3 = createOriginRay(x, y - border);
+
+      triangles.forEach((triangle) => {
         ray1.pointOfIntersection(triangle);
         if (ray1.IntSecPnt != undefined) {
-          let colorPixel = DepthCueing(
-            ray1.IntSecPntTriangle.material,
-            ray1.IntSecPnt.z
-          );
-          //console.log("Result" + JSON.stringify(colorPixel));
-          sock.pixel(
-            x,
-            y,
+          // only check the others if they "main" raycast hit anything
+          // this should optimize performance a bit
+          xRay2.pointOfIntersection(triangle);
+          xRay3.pointOfIntersection(triangle);
+          yRay2.pointOfIntersection(triangle);
+          yRay3.pointOfIntersection(triangle);
+
+          let colorPixel = { r: 0, g: 0, b: 0 };
+          const point1 = [ray1.IntSecPnt.x, ray1.IntSecPnt.y, ray1.IntSecPnt.z];
+          const xPoint2 = xRay2.IntSecPnt
+            ? [xRay2.IntSecPnt.x, xRay2.IntSecPnt.y, xRay2.IntSecPnt.z]
+            : point1;
+          const xPoint3 = xRay3.IntSecPnt
+            ? [xRay3.IntSecPnt.x, xRay3.IntSecPnt.y, xRay3.IntSecPnt.z]
+            : point1;
+
+          const yPoint2 = yRay2.IntSecPnt
+            ? [yRay2.IntSecPnt.x, yRay2.IntSecPnt.y, yRay2.IntSecPnt.z]
+            : point1;
+          const yPoint3 = yRay3.IntSecPnt
+            ? [yRay3.IntSecPnt.x, yRay3.IntSecPnt.y, yRay3.IntSecPnt.z]
+            : point1;
+
+          let xAngle = 0;
+          let yAngle = 0;
+          if (point1 !== xPoint2 && xPoint2 !== xPoint3) {
+            xAngle = _find_angle(xPoint2, point1, xPoint3);
+            //console.log(xAngle);
+          }
+
+          if (point1 !== yPoint2 && yPoint2 !== xPoint3) {
+            yAngle = _find_angle(yPoint2, point1, yPoint3);
+
+            // console.log(angle);
+          }
+
+          let isEdge = false;
+
+          if (xAngle < 100 || !xRay2.IntSecPnt || !xRay3.IntSecPnt) {
+            // console.log("found");
+            colorPixel.r = 1;
+            isEdge = true;
+          } else if (yAngle < 170 || !yRay2.IntSecPnt || !yRay3.IntSecPnt) {
+            colorPixel.g = 1;
+            isEdge = true;
+          }
+
+          //console.log("angles", xAngle, yAngle);
+          colorPixel = _indicateDepth(
+            isEdge ? colorPixel : ray1.IntSecPntTriangle.material,
             ray1.IntSecPnt.z,
-            colorPixel.r,
-            colorPixel.g,
-            colorPixel.b
+            BackColor
           );
-        } else
-          sock.pixel(
-            x,
-            y,
-            0,
-            DefaultColor.r,
-            DefaultColor.g,
-            DefaultColor.b
-          );
-      }
-      );
+          
+          //colorPixel.b = colorPixel.b * (ray1.mu + 0.5);
+          //colorPixel.b = colorPixel.b * (ray1.nu + 0.5);
+
+          sock.pixel(x, y, colorPixel.r, colorPixel.g, colorPixel.b);
+        } else {
+          // we could color the backcolor here, but also we could just ignore since we fill the background at the beginning
+          //sock.pixel(x, y, BackColor.r, BackColor.g, BackColor.b);
+        }
+      });
     }
   }
+  const endMilliSecond = Date.now();
+  console.log("End MS", endMilliSecond);
+  console.log("Elapsed time MS", endMilliSecond - startMillisecond);
+  //sock.sendBatch();
 }
+
+/* 
+time stamps
+Without memoize
+7.5 - 8.9sec
+With depth memoize
+6.9 - 7.9sec
+
+
+*/
